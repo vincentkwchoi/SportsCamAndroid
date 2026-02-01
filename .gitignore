@@ -1,0 +1,39 @@
+# System
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build Artifacts
+DerivedData/
+build/
+*.mode1v3
+*.mode2v3
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.perspectivev3
+*.xcworkspace
+!default.xcworkspace
+xcuserdata/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+.ipynb_checkpoints/
+
+# Models (Optional, but large models >100MB blocked by GitHub)
+Resources/
+*.mlpackage/
+**.mlpackage
+yolo11x.mlpackage/
+*.pt
+*yolo11*
+
+# Media
+*.mp4
+*.mov
+
+# POC
+proof_of_concept/
