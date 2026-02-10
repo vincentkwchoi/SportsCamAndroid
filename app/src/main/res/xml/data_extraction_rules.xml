@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data_extraction_rules>
+    <cloud_backup>
+        <include domain="root" />
+    </cloud_backup>
+    <device_transfer>
+        <include domain="root" />
+    </device_transfer>
+</data_extraction_rules>

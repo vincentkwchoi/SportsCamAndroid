@@ -3,18 +3,36 @@
 .AppleDouble
 .LSOverride
 
-# Build Artifacts
-DerivedData/
+# Gradle
+.gradle/
 build/
-*.mode1v3
-*.mode2v3
-*.moved-aside
-*.pbxuser
-!default.pbxuser
-*.perspectivev3
-*.xcworkspace
-!default.xcworkspace
-xcuserdata/
+*.main.kts
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+.project
+.settings/
+.classpath
+
+# Android
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aar
+*.bundle
+
+# Logs
+*.log
+
+# Models
+*.mlpackage/
+*.pt
+*.tflite
+*.npy
 
 # Python
 venv/
@@ -23,17 +41,12 @@ __pycache__/
 .env
 .ipynb_checkpoints/
 
-# Models (Optional, but large models >100MB blocked by GitHub)
-Resources/
-*.mlpackage/
-**.mlpackage
-yolo11x.mlpackage/
-*.pt
-*yolo11*
-
 # Media
 *.mp4
 *.mov
+*.png
+*.jpg
+*.jpeg
 
-# POC
-proof_of_concept/
+# Artifacts
+.gemini/
