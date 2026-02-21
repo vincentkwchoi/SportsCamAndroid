@@ -1,8 +1,8 @@
 package com.sportscam.domain
 
 class PIDController(
-    private var kp: Float = 6.0f,      // Proportional gain
-    private var kd: Float = 3.0f       // Derivative gain
+    private var kp: Float,
+    private var kd: Float
 ) {
     private var lastError: Float = 0f
     private var lastTime: Long = 0L

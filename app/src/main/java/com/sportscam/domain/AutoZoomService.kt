@@ -5,26 +5,25 @@ import android.util.Size
 import com.sportscam.data.models.AutoZoomConfig
 import com.sportscam.data.models.Detection
 import com.sportscam.data.models.SportMode
+import com.sportscam.data.models.SelectionStrategy
 import com.sportscam.presentation.camera.ZoomHardwareActuator
 
 class AutoZoomService(
-    private val throttler: FrameThrottler = FrameThrottler(interval = 1), // Step 1
-    private val detector: EfficientDetLiteRTDetector, // Step 2 (Benchmark Winner)
-    private val tracker: ByteTrackTracker, // Step 3
-    private val selector: AthleteSelection = AthleteSelection(), // Step 4
-    private val activityDetector: BBoxActivityDetector, // Step 5
-    private val targetZoomCalc: TargetZoomCalc = TargetZoomCalc(), // Step 6
-    private val hysteresisGate: HysteresisGate = HysteresisGate(), // Step 7
-    private val pidController: PIDController = PIDController(), // Step 8
-    private val zoomScaling: ZoomLogScaling = ZoomLogScaling(), // Step 9
-    private val zoomConstraint: ZoomConstraint = ZoomConstraint(), // Step 10
-    private val hardwareActuator: ZoomHardwareActuator // Step 11
+    private val throttler: FrameThrottler = FrameThrottler(interval = 1),
+    private var detector: ObjectDetector,
+    private val tracker: ByteTrackTracker,
+    private var selector: AthleteSelector = SingleSubjectSelector(),
+    private val activityDetector: BBoxActivityDetector,
+    private val targetZoomCalc: TargetZoomCalc = TargetZoomCalc(),
+    private val hysteresisGate: HysteresisGate = HysteresisGate(startThreshold = 0.15f, stopThreshold = 0.05f),
+    private val pidController: PIDController = PIDController(kp = 1.0f, kd = 0.0f),
+    private val zoomScaling: ZoomLogScaling = ZoomLogScaling(),
+    private val zoomConstraint: ZoomConstraint = ZoomConstraint(),
+    private val hardwareActuator: ZoomHardwareActuator
 ) {
     private var currentZoom: Float = 1.0f
+    private var currentSportMode: SportMode? = null
 
-    /**
-     * Consolidates the full 11-step pipeline from raw image to camera hardware actuation.
-     */
     fun processFrame(
         bitmap: android.graphics.Bitmap, 
         frameNumber: Long, 
@@ -41,16 +40,14 @@ class AutoZoomService(
 
         // Step 2: Detection
         val detections = detector.detect(bitmap)
-        Log.d("AutoZoom", "Step 2: Detection found ${detections.size} subjects")
 
         // Step 3: Tracking
         val tracks = tracker.update(detections)
 
         // Filter active tracks via BBoxActivityDetector
         val activeTracks = tracks.filter { it.misses == 0 && activityDetector.isActive(it) }
-        Log.d("AutoZoom", "Step 3: Tracking - Total=${tracks.size}, Active=${activeTracks.size}")
 
-        // Step 4: Selection (Single Target)
+        // Step 4: Selection (Using Strategy set via config)
         val target = selector.selectTarget(activeTracks)
         
         if (target == null) {
@@ -105,9 +102,29 @@ class AutoZoomService(
     fun setSportMode(mode: SportMode) {
         val defaultConfig = AutoZoomConfig.defaultFor(mode)
         applyConfig(defaultConfig)
+        currentSportMode = mode
+    }
+
+    fun updateDetector(newDetector: ObjectDetector) {
+        detector.close()
+        detector = newDetector
     }
     
     fun applyConfig(config: AutoZoomConfig) {
+        // Only swap strategy if it actually changed, to avoid unnecessary resets
+        val newStrategy = when (config.selectionStrategy) {
+            SelectionStrategy.SINGLE_SUBJECT -> SingleSubjectSelector()
+            SelectionStrategy.GROUP -> GroupSelector()
+        }
+        
+        if (selector::class != newStrategy::class) {
+            selector = newStrategy
+            reset() // Full reset required when strategy architecture changes
+        }
+
+        // SEAMLESS UPDATES: No reset() called below this line
+        throttler.setInterval(config.analysisInterval)
+        detector.confidenceThreshold = config.minConfidence
         targetZoomCalc.targetSubjectHeightRatio = config.targetHeightRatio
         pidController.updateGains(config.kp, config.kd)
         zoomScaling.updateGain(config.kZoom)
@@ -115,8 +132,8 @@ class AutoZoomService(
         hardwareActuator.updateRampRate(config.rampRate)
         activityDetector.updateThreshold(config.shapeVarianceThreshold)
         hysteresisGate.updateThresholds(config.startThreshold, config.stopThreshold)
-        tracker.updateConfig(config.trackBuffer, 0.3f)
-        reset()
+        tracker.updateConfig(config.trackBuffer, config.minConfidence)
+        tracker.matchThresh = config.iouThreshold
     }
     
     fun cleanup() {
@@ -129,5 +146,6 @@ class AutoZoomService(
         hysteresisGate.reset()
         tracker.reset()
         activityDetector.reset()
+        selector.reset()
     }
 }

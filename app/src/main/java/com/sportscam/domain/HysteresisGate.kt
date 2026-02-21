@@ -3,8 +3,8 @@ package com.sportscam.domain
 import kotlin.math.abs
 
 class HysteresisGate(
-    private var startThreshold: Float = 0.15f, // 15% error required to START
-    private var stopThreshold: Float = 0.05f   // 5% error required to STOP
+    private var startThreshold: Float, // error required to START
+    private var stopThreshold: Float   // error required to STOP
 ) {
     private var isZooming = false
     

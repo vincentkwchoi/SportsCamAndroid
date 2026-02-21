@@ -1,7 +1,7 @@
 package com.sportscam.domain
 
 class FrameThrottler(
-    private var interval: Int = 1
+    private var interval: Int
 ) {
     private var counter: Int = 0
 

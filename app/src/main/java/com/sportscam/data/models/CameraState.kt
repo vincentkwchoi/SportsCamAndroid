@@ -13,5 +13,6 @@ data class CameraState(
     val averageActiveHeight: Float = 0f,
     val showDebug: Boolean = false,
     val sportMode: SportMode = SportMode.BASKETBALL,
-    val sourceSize: Size? = null // Size of the frame detections are relative to
+    val sourceSize: Size? = null,
+    val lastVideoUri: String? = null // Track the URI of the last recording
 )

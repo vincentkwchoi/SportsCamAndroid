@@ -1,5 +1,16 @@
 package com.sportscam.data.models
 
+enum class SportMode(val displayName: String) {
+    BASKETBALL("Basketball"),
+    SKI("Ski"),
+    HOCKEY("Hockey")
+}
+
+enum class SelectionStrategy {
+    SINGLE_SUBJECT,
+    GROUP
+}
+
 data class AutoZoomConfig(
     val targetHeightRatio: Float,
     val kp: Float,
@@ -10,7 +21,15 @@ data class AutoZoomConfig(
     val shapeVarianceThreshold: Float,
     val startThreshold: Float,
     val stopThreshold: Float,
-    val trackBuffer: Int
+    val trackBuffer: Int,
+    val minConfidence: Float,
+    val movementThreshold: Float,
+    val selectionStrategy: SelectionStrategy,
+    val panSmoothingAlpha: Float = 0.2f,
+    val analysisInterval: Int = 1,
+    val iouThreshold: Float = 0.45f,
+    val minHistoryDecision: Int = 10,
+    val activityHistorySize: Int = 60
 ) {
     companion object {
         fun defaultFor(mode: SportMode) = when(mode) {
@@ -24,31 +43,49 @@ data class AutoZoomConfig(
                 shapeVarianceThreshold = 0.002f,
                 startThreshold = 0.15f,
                 stopThreshold = 0.05f,
-                trackBuffer = 30
+                trackBuffer = 30,
+                minConfidence = 0.3f,
+                movementThreshold = 0.08f,
+                selectionStrategy = SelectionStrategy.SINGLE_SUBJECT,
+                panSmoothingAlpha = 0.2f,
+                analysisInterval = 1,
+                iouThreshold = 0.45f
             )
             SportMode.BASKETBALL -> AutoZoomConfig(
                 targetHeightRatio = 0.33f,
-                kp = 6.0f,
-                kd = 3.0f,
-                kZoom = 15.0f,
-                maxZoom = 5.0f,
-                rampRate = 4.0f,
+                kp = 2.0f,      
+                kd = 1.0f,      
+                kZoom = 8.0f,   
+                maxZoom = 10.0f, 
+                rampRate = 0.25f, 
                 shapeVarianceThreshold = 0.002f,
-                startThreshold = 0.10f,
-                stopThreshold = 0.05f,
-                trackBuffer = 150
+                startThreshold = 0.25f,
+                stopThreshold = 0.08f, 
+                trackBuffer = 30,
+                minConfidence = 0.3f,
+                movementThreshold = 0.05f,
+                selectionStrategy = SelectionStrategy.GROUP,
+                panSmoothingAlpha = 0.4f,
+                analysisInterval = 1,
+                iouThreshold = 0.45f
             )
             SportMode.HOCKEY -> AutoZoomConfig(
                 targetHeightRatio = 0.33f,
-                kp = 6.5f,
-                kd = 3.2f,
-                kZoom = 12.0f,
-                maxZoom = 5.0f,
-                rampRate = 3.5f,
+                kp = 2.0f,      
+                kd = 1.0f,      
+                kZoom = 8.0f,   
+                maxZoom = 10.0f, 
+                rampRate = 0.25f, 
                 shapeVarianceThreshold = 0.002f,
-                startThreshold = 0.10f,
-                stopThreshold = 0.05f,
-                trackBuffer = 100
+                startThreshold = 0.25f,
+                stopThreshold = 0.08f, 
+                trackBuffer = 30,
+                minConfidence = 0.3f,
+                movementThreshold = 0.05f,
+                selectionStrategy = SelectionStrategy.GROUP,
+                panSmoothingAlpha = 0.4f,
+                analysisInterval = 1,
+                iouThreshold = 0.45f
             )
         }
     }

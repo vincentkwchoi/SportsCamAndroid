@@ -17,8 +17,9 @@ import com.sportscam.domain.AutoZoomService
 import com.sportscam.domain.BBoxActivityDetector
 import com.sportscam.domain.AutoZoomResult
 import com.sportscam.domain.ByteTrackTracker
-import com.sportscam.domain.YOLODetector
 import com.sportscam.domain.EfficientDetLiteRTDetector
+import com.sportscam.domain.YOLOV8Detector
+import com.sportscam.domain.ObjectDetector
 import com.sportscam.data.models.AutoZoomConfig
 import com.sportscam.data.models.Detection
 import com.sportscam.presentation.camera.CameraManager
@@ -37,16 +38,19 @@ class CameraViewModel(
 
     private val cameraManager = CameraManager(context)
     
-    // Auto-Zoom Components - Restored for full functionality
+    // Auto-Zoom Components
     private val hardwareActuator = ZoomHardwareActuator(cameraManager)
+    
+    // Start with EfficientDet for general use
+    private val initialDetector: ObjectDetector = EfficientDetLiteRTDetector(context)
+    
     private val autoZoomService = AutoZoomService(
-        detector = EfficientDetLiteRTDetector(context),
+        detector = initialDetector,
         tracker = ByteTrackTracker(),
         activityDetector = BBoxActivityDetector(),
         hardwareActuator = hardwareActuator
     )
     
-    // State
     // Debug Utilities
     private val debugImageSaver = DebugImageSaver(context)
 
@@ -62,8 +66,8 @@ class CameraViewModel(
     var isAnalyzerActive = true
     
     init {
-        // Sync service with initial mode (updates internal tracker/detector/etc)
-        autoZoomService.setSportMode(_cameraState.value.sportMode)
+        // Sync service with initial mode
+        setSportMode(_cameraState.value.sportMode)
     }
     
     fun startCamera(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
@@ -81,7 +85,6 @@ class CameraViewModel(
             return@Analyzer
         }
 
-        // Calculation of analysis FPS
         val currentTime = System.currentTimeMillis()
         if (lastAnalysisTime > 0) {
             val fps = 1000f / (currentTime - lastAnalysisTime)
@@ -94,13 +97,11 @@ class CameraViewModel(
     }
 
     private fun processFrame(imageProxy: ImageProxy) {
-        val crop = imageProxy.cropRect
-        Log.d("AutoZoom", "ImageProxy: Resolution=${imageProxy.width}x${imageProxy.height}, CropRect=[${crop.left}, ${crop.top}, ${crop.right}, ${crop.bottom}]")
+        val rotationDegrees = imageProxy.imageInfo.rotationDegrees
         val startTime = System.currentTimeMillis()
         try {
             val bitmap = imageProxy.toBitmap()
-            // Rotate Bitmap to match display orientation
-            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+            
             val processedBitmap = if (rotationDegrees != 0) {
                 val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
                 Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
@@ -108,14 +109,12 @@ class CameraViewModel(
                 bitmap
             }
 
-            // Update frame size for coordinates (swapping W/H if rotated 90/270)
             val frameSize = if (rotationDegrees % 180 != 0) {
                 Size(imageProxy.height, imageProxy.width)
             } else {
                 Size(imageProxy.width, imageProxy.height)
             }
             
-            // Orchestrate full pipeline via AutoZoomService
             val result = autoZoomService.processFrame(
                 bitmap = processedBitmap,
                 frameNumber = frameCounter,
@@ -124,15 +123,12 @@ class CameraViewModel(
                 currentZoom = _cameraState.value.zoomState.currentZoom
             )
             
-            // Skip state update if frame was throttled (stale data remains in UI)
             if (!result.isProcessed) {
                 return
             }
 
-            // Periodic Visual Debug Logging (Once per second)
             val currentTimeMs = System.currentTimeMillis()
             if (result.isProcessed && (currentTimeMs - lastDebugSaveTime) >= 1000L) {
-                Log.d("AutoZoom", "Triggering debug frame save for frame $frameCounter (Time elapsed: ${currentTimeMs - lastDebugSaveTime}ms)")
                 lastDebugSaveTime = currentTimeMs
                 debugImageSaver.saveFrame(
                     bitmap = processedBitmap,
@@ -143,7 +139,6 @@ class CameraViewModel(
                 )
             }
 
-            // Calculate Metrics
             val executionTime = System.currentTimeMillis() - startTime
             val avgHeight = if (result.activeTracks.isNotEmpty()) {
                 result.activeTracks.map { it.bbox.height() }.average().toFloat()
@@ -151,7 +146,6 @@ class CameraViewModel(
                 0f
             }
             
-            // Update State for UI Overlay
             _cameraState.update { 
                 it.copy(
                     detections = result.detections,
@@ -171,6 +165,21 @@ class CameraViewModel(
     
     fun setSportMode(mode: SportMode) {
         _cameraState.update { it.copy(sportMode = mode) }
+        
+        // Switch detector if needed for specialized sports
+        val newDetector: ObjectDetector = when (mode) {
+            SportMode.BASKETBALL -> {
+                // Specialized Roboflow Basketball Player Detection Model
+                YOLOV8Detector(context, "basketball_player_yolov8.tflite", numClasses = 1)
+            }
+            else -> {
+                // Standard person detection for other sports
+                EfficientDetLiteRTDetector(context)
+            }
+        }
+        
+        autoZoomService.updateDetector(newDetector)
+
         val newConfig = AutoZoomConfig.defaultFor(mode)
         _config.value = newConfig
         autoZoomService.setSportMode(mode)
@@ -179,6 +188,10 @@ class CameraViewModel(
     fun updateConfig(newConfig: AutoZoomConfig) {
         _config.value = newConfig
         autoZoomService.applyConfig(newConfig)
+    }
+
+    fun updateCameraOrientation(rotation: Int) {
+        cameraManager.updateAnalyzerRotation(rotation)
     }
     
     fun toggleDebugOverlay() {
@@ -194,7 +207,7 @@ class CameraViewModel(
             cameraManager.startRecording(
                 onVideoSaved = { uri ->
                     Log.d("CameraViewModel", "Video saved: $uri")
-                    // Could show toast or preview
+                    _cameraState.update { it.copy(lastVideoUri = uri) }
                 },
                 onError = { error ->
                     Log.e("CameraViewModel", error)
@@ -202,6 +215,17 @@ class CameraViewModel(
                 }
             )
             _cameraState.update { it.copy(isRecording = true) }
+        }
+    }
+
+    fun deleteLastVideo() {
+        val uri = _cameraState.value.lastVideoUri ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = cameraManager.deleteVideo(uri)
+            if (success) {
+                _cameraState.update { it.copy(lastVideoUri = null) }
+                Log.d("CameraViewModel", "Last video deleted successfully")
+            }
         }
     }
     

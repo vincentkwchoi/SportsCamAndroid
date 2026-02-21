@@ -90,6 +90,20 @@
   - [ ] Profile memory usage (< 50MB budget per SPEC 5.2)
   - [ ] Release resources when app backgrounded
 
+## Phase 8: Repository Maintenance
+- [x] **8.1 Git Migration**
+  - [x] Update remote origin to `SportsCamAndroid`
+  - [x] Improve `.gitignore` for Android/Gradle
+  - [x] Remove machine-specific `local.properties` from tracking
+  - [x] Push all local changes to new remote
+
+## Phase 9: Detailed Testing (SPEC 6.0)
+- [ ] **9.1 Comprehensive Testing**
+  - [ ] Unit Tests (90% coverage for Zoom/Tracking)
+  - [ ] Integration Tests (Camera → Detection → Zoom pipeline)
+  - [ ] UI Tests (Recording toggle, manual zoom controls)
+  - [ ] Field Tests: Basketball, Ski, Hockey
+
 - [ ] **6.2 UI Experience & Rotation** (SPEC Q17, 3.3.3)
   - [ ] Full Landscape/Portrait Rotation support for UI & Video Metadata
   - [ ] Implement Recording Red Dot & Timer (SPEC Q9)

@@ -1,14 +1,18 @@
 package com.sportscam.presentation.camera
 
+import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
-import android.os.Environment
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
@@ -18,7 +22,6 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -28,6 +31,7 @@ class CameraManager(
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var videoCapture: VideoCapture<Recorder>? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var recording: Recording? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
@@ -47,8 +51,9 @@ class CameraManager(
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
 
-            val imageAnalysis = ImageAnalysis.Builder()
+            imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setTargetRotation(previewView.display.rotation)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .build()
                 .also {
@@ -59,10 +64,7 @@ class CameraManager(
                 .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                 .build()
 
-            Log.d("AutoZoom", "Camera Selector: BACK_CAMERA requested")
-
             try {
-                // Video Capture
                 val recorder = Recorder.Builder()
                     .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
                     .build()
@@ -77,7 +79,6 @@ class CameraManager(
                     videoCapture
                 )
 
-                // Observe Zoom State
                 camera?.cameraInfo?.zoomState?.observe(lifecycleOwner) { zoomState ->
                     onZoomStateChanged?.invoke(zoomState.zoomRatio, zoomState.linearZoom)
                 }
@@ -89,30 +90,54 @@ class CameraManager(
         }, ContextCompat.getMainExecutor(context))
     }
 
+    /**
+     * Updates the target rotation of the analyzer to match the current display orientation.
+     */
+    fun updateAnalyzerRotation(rotation: Int) {
+        imageAnalysis?.targetRotation = rotation
+    }
+
     private var onZoomStateChanged: ((Float, Float) -> Unit)? = null
 
     fun setOnZoomStateChangedListener(listener: (Float, Float) -> Unit) {
         onZoomStateChanged = listener
     }
 
+    @SuppressLint("MissingPermission")
     fun startRecording(onVideoSaved: (String) -> Unit, onError: (String) -> Unit) {
         val videoCapture = this.videoCapture ?: return
 
+        val name = "SportsCam_${System.currentTimeMillis()}"
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/Camera")
+            }
+        }
+
+        val mediaStoreOutputOptions = MediaStoreOutputOptions
+            .Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+            .setContentValues(contentValues)
+            .build()
+
         recording = videoCapture.output
-            .prepareRecording(context, FileOutputOptions.Builder(createVideoFile()).build())
+            .prepareRecording(context, mediaStoreOutputOptions)
             .withAudioEnabled()
             .start(ContextCompat.getMainExecutor(context)) { recordEvent ->
                 when(recordEvent) {
                     is VideoRecordEvent.Start -> {
-                        // Recording started
+                        Log.d(TAG, "Recording started")
                     }
                     is VideoRecordEvent.Finalize -> {
                         if (!recordEvent.hasError()) {
-                            onVideoSaved(recordEvent.outputResults.outputUri.toString())
+                            val uri = recordEvent.outputResults.outputUri
+                            Log.d(TAG, "Video saved successfully to DCIM/Camera: $uri")
+                            onVideoSaved(uri.toString())
                         } else {
                             recording?.close()
                             recording = null
-                            onError("Video capture failed: ${recordEvent.error}")
+                            onError("Video capture failed with error code: ${recordEvent.error}")
                         }
                     }
                 }
@@ -124,19 +149,19 @@ class CameraManager(
         recording = null
     }
 
-    private fun createVideoFile(): File {
-        val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        val appDir = File(moviesDir, "SportsCam")
-        if (!appDir.exists()) appDir.mkdirs()
-        return File(appDir, "SportsCam_${System.currentTimeMillis()}.mp4")
+    fun deleteVideo(uriString: String): Boolean {
+        return try {
+            val uri = Uri.parse(uriString)
+            val rowsDeleted = context.contentResolver.delete(uri, null, null)
+            rowsDeleted > 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete video: $uriString", e)
+            false
+        }
     }
 
     fun setZoom(zoomRatio: Float) {
         camera?.cameraControl?.setZoomRatio(zoomRatio)
-    }
-
-    fun setLinearZoom(linearZoom: Float) {
-        camera?.cameraControl?.setLinearZoom(linearZoom)
     }
 
     fun stopCamera() {

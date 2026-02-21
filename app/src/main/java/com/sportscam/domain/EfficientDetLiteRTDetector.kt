@@ -16,12 +16,15 @@ import java.util.ArrayList
 class EfficientDetLiteRTDetector(
     private val context: Context,
     private val modelPath: String = "efficientdet-tflite-lite0-int8-v1.tflite"
-) {
+) : ObjectDetector {
     private var compiledModel: CompiledModel? = null
     private var imageProcessor: ImageProcessor? = null
     
     private var inputBuffers: List<TensorBuffer>? = null
     private var outputBuffers: List<TensorBuffer>? = null
+    
+    // Configurable threshold
+    override var confidenceThreshold: Float = 0.3f
     
     init {
         setupLiteRT()
@@ -39,23 +42,21 @@ class EfficientDetLiteRTDetector(
                 .add(ResizeOp(320, 320, ResizeOp.ResizeMethod.BILINEAR))
                 .build()
                 
-            Log.d("AutoZoom", "EfficientDetLiteRT: Initialized successfully with NPU (Requested).")
+            Log.d("AutoZoom", "EfficientDetLiteRT: Initialized successfully.")
         } catch (e: Exception) {
             Log.e("AutoZoom", "EfficientDetLiteRT: Initialization failed.", e)
         }
     }
 
-    fun detect(bitmap: Bitmap): List<Detection> {
+    override fun detect(bitmap: Bitmap): List<Detection> {
         val model = compiledModel ?: return emptyList()
         val inputs = inputBuffers ?: return emptyList()
         val outputs = outputBuffers ?: return emptyList()
         
-        // 1. Preprocess
         var tensorImage = TensorImage(org.tensorflow.lite.DataType.UINT8)
         tensorImage.load(bitmap)
         tensorImage = imageProcessor?.process(tensorImage) ?: return emptyList()
         
-        // 2. Inference
         val inputBuffer = inputs[0]
         val buffer = tensorImage.buffer
         val inputArray = ByteArray(buffer.remaining())
@@ -64,7 +65,6 @@ class EfficientDetLiteRTDetector(
         
         model.run(inputs, outputs)
         
-        // 3. Post-process
         val boxes = outputs[0].readFloat() 
         val classes = outputs[1].readFloat()
         val scores = outputs[2].readFloat()
@@ -75,9 +75,8 @@ class EfficientDetLiteRTDetector(
             val score = scores[i]
             val classId = classes[i].toInt()
             
-            // Detect person (standard class index 0)
-            if (score > 0.3f && classId == 0) {
-                // EfficientDet Output: [ymin, xmin, ymax, xmax]
+            // Use the dynamic threshold
+            if (score > confidenceThreshold && classId == 0) {
                 detections.add(
                     Detection(
                         bbox = RectF(boxes[i * 4 + 1], boxes[i * 4 + 0], boxes[i * 4 + 3], boxes[i * 4 + 2]),
@@ -90,7 +89,7 @@ class EfficientDetLiteRTDetector(
         return detections
     }
 
-    fun close() {
+    override fun close() {
         compiledModel?.close()
     }
 }

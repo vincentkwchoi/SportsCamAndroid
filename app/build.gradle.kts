@@ -28,7 +28,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -64,10 +65,13 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
+    
+    // ADDED: Explicit fragment dependency to fix Lint fatal error for ActivityResult API
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     
     // Modern Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
@@ -93,9 +97,6 @@ dependencies {
     implementation("com.google.ai.edge.litert:litert-support:1.4.1") {
         exclude(group = "com.google.ai.edge.litert", module = "litert-api")
     }
-
-    // MediaPipe REMOVED due to verified 16KB alignment failure in 0.10.20
-    // implementation("com.google.mediapipe:tasks-vision:0.10.20")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
